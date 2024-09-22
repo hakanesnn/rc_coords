@@ -56,6 +56,18 @@ local DISABLED = {
     311, -- INPUT_REPLAY_SHOWHOTKEY
 }
 
+-- https://github.com/overextended/ox_lib/blob/master/imports/raycast/client.lua
+local glm_sincos = require 'glm'.sincos
+local glm_rad = require 'glm'.rad
+local math_abs = math.abs
+local GetFinalRenderedCamCoord = GetFinalRenderedCamCoord
+local GetFinalRenderedCamRot = GetFinalRenderedCamRot
+
+local function getForwardVector()
+    local sin, cos = glm_sincos(glm_rad(GetFinalRenderedCamRot(2)))
+    return vec3(-sin.z * math_abs(cos.x), cos.z * math_abs(cos.x), sin.x)
+end
+
 local function roundToDecimals(num, decimals)
     if not decimals then decimals = 2 end
     local mult = 10 ^ decimals
@@ -64,10 +76,15 @@ end
 
 RegisterCommand('rcc', function()
     local loop = true
+    local destination
     local hit, hitEntity, endCoords, surfaceNormal
+    local distance = 3.0
     CreateThread(function()
         while loop do
-            hit, hitEntity, endCoords, surfaceNormal = lib.raycast.fromCamera(1, 4, 50.0)
+            local coords = GetFinalRenderedCamCoord()
+            destination = coords + getForwardVector() * (distance or 10)
+
+            hit, hitEntity, endCoords, surfaceNormal = lib.raycast.fromCoords(GetFinalRenderedCamCoord(), destination, 511, 4)
             Wait(5)
         end
     end)
@@ -76,21 +93,32 @@ RegisterCommand('rcc', function()
             DisableControlAction(0, DISABLED[i], true)
         end
 
-        if endCoords then
-            if hit then
-                local pedCoords = GetEntityCoords(cache.ped)
-                DrawLine(pedCoords.x, pedCoords.y, pedCoords.z, endCoords.x, endCoords.y, endCoords.z, 255, 0, 0, 255)
-                DrawSphere(endCoords.x, endCoords.y, endCoords.z, 0.06, 255, 255, 255, 0.7)
+        if IsDisabledControlPressed(0, 16) then
+            distance -= 0.01
+            print('Distance: ', distance)
+        elseif IsDisabledControlPressed(0, 17) then
+            distance += 0.01
+            print('Distance: ', distance)
+        end
 
-                local vec3Str = ('vec3(%s, %s, %s)'):format(roundToDecimals(endCoords.x), roundToDecimals(endCoords.y), roundToDecimals(endCoords.z))
-                print(vec3Str)
+        local targetCoords = destination
+        if hit then
+            targetCoords = endCoords
+        end
 
-                if IsDisabledControlJustReleased(0, 24) then
-                    lib.setClipboard(vec3Str)
-                    loop = false
-                elseif IsDisabledControlJustReleased(0, 202) then
-                    loop = false
-                end
+        if targetCoords then
+            local pedCoords = GetEntityCoords(cache.ped)
+            DrawLine(pedCoords.x, pedCoords.y, pedCoords.z, targetCoords.x, targetCoords.y, targetCoords.z, 255, 0, 0, 255)
+            DrawSphere(targetCoords.x, targetCoords.y, targetCoords.z, 0.06, 255, 255, 255, 0.7)
+
+            local vec3Str = ('vec3(%s, %s, %s)'):format(roundToDecimals(targetCoords.x), roundToDecimals(targetCoords.y), roundToDecimals(targetCoords.z))
+            -- print('Target Coords: ', vec3Str)
+
+            if IsDisabledControlJustReleased(0, 24) then
+                lib.setClipboard(vec3Str)
+                loop = false
+            elseif IsDisabledControlJustReleased(0, 202) then
+                loop = false
             end
         end
 
